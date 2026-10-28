@@ -1,0 +1,31 @@
+---
+# Development/build override. Production uses the registry images declared in
+# docker-compose.yaml so Watchtower always tracks a pullable image.
+services:
+  airflow-webserver: &airflow-local
+    image: opencve-airflow:local
+    build:
+      context: ..
+      dockerfile: scheduler/Dockerfile
+      args:
+        OPENCVE_REPOSITORY: ${OPENCVE_REPOSITORY}
+        OPENCVE_VERSION: ${OPENCVE_VERSION}
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
+  airflow-scheduler:
+    <<: *airflow-local
+  airflow-worker:
+    <<: *airflow-local
+  airflow-init:
+    <<: *airflow-local
+  webserver:
+    image: opencve-webserver:local
+    build:
+      context: ..
+      dockerfile: web/Dockerfile
+      args:
+        OPENCVE_REPOSITORY: ${OPENCVE_REPOSITORY}
+        OPENCVE_VERSION: ${OPENCVE_VERSION}
+        GUNICORN_CMD_ARGS: ${GUNICORN_CMD_ARGS}
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
