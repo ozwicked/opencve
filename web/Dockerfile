@@ -35,6 +35,9 @@ LABEL url="${OPENCVE_REPOSITORY}"
 
 COPY --from=builder /app/venv /app/venv
 COPY --from=builder /app/opencve/web /app/opencve/web
+COPY docker/entrypoint-webserver.sh /usr/local/bin/opencve-webserver-entrypoint
+
+RUN chmod 0755 /usr/local/bin/opencve-webserver-entrypoint
 
 ENV PATH="/app/venv/bin:$PATH"
 ENV GUNICORN_CMD_ARGS="${GUNICORN_CMD_ARGS}"
@@ -44,5 +47,5 @@ WORKDIR /app/opencve/web/
 
 EXPOSE 8000
 
-ENTRYPOINT ["gunicorn", "opencve.wsgi"]
+ENTRYPOINT ["/usr/local/bin/opencve-webserver-entrypoint"]
 CMD ["-b" ,"0.0.0.0:8000"]

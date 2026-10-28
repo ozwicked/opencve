@@ -4,12 +4,7 @@
 ---
 name: opencve
 x-airflow-common: &airflow-common
-  build:
-    context: ..
-    dockerfile: scheduler/Dockerfile
-    args:
-      - OPENCVE_REPOSITORY=${OPENCVE_REPOSITORY}
-      - OPENCVE_VERSION=${OPENCVE_VERSION}
+  image: ${OPENCVE_AIRFLOW_IMAGE:-ghcr.io/ozwicked/opencve-airflow:latest}
   env_file:
     - .env
   volumes:
@@ -21,13 +16,16 @@ x-airflow-common: &airflow-common
       condition: service_healthy
     postgres:
       condition: service_healthy
+  labels:
+    com.centurylinklabs.watchtower.enable: "true"
+    com.centurylinklabs.watchtower.monitor-only: "true"
 
 services:
   airflow-webserver:
     <<: *airflow-common
     command: webserver
     ports:
-      - "${AIRFLOW_WEBSERVER_PORT:-8080}:8080"
+      - "${AIRFLOW_BIND_ADDRESS:-127.0.0.1}:${AIRFLOW_WEBSERVER_PORT:-8093}:8080"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 60s
@@ -86,33 +84,46 @@ services:
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
     user: "0:0"
+    labels:
+      com.centurylinklabs.watchtower.enable: "false"
 
   webserver:
+    image: ${OPENCVE_WEBSERVER_IMAGE:-ghcr.io/ozwicked/opencve-webserver:latest}
     env_file:
       - .env
-    build:
-      context: ..
-      dockerfile: web/Dockerfile
-      args:
-        - OPENCVE_REPOSITORY=${OPENCVE_REPOSITORY}
-        - OPENCVE_VERSION=${OPENCVE_VERSION}
-        - GUNICORN_CMD_ARGS=${GUNICORN_CMD_ARGS}
     volumes:
       - ../web/opencve/conf/.env:/app/opencve/web/opencve/conf/.env:ro
       - ../web/opencve/conf/settings.py:/app/opencve/web/opencve/conf/settings.py:ro
       - repositories:/app/repositories/:ro
       - staticfiles:/app/static/
     restart: on-failure
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+      com.centurylinklabs.watchtower.monitor-only: "true"
 
   nginx:
     image: nginx:trixie
     ports:
-       - "${OPENCVE_PORT:-80}:80"
+       - "${OPENCVE_BIND_ADDRESS:-192.168.178.57}:${OPENCVE_PORT:-8092}:80"
     volumes:
       - ./conf/opencve.conf.template:/etc/nginx/templates/opencve.conf.template:ro
       - ./conf/default.conf.template:/etc/nginx/templates/default.conf.template:ro
       - staticfiles:/var/www/opencve/static/:ro
     restart: on-failure
+    depends_on:
+      webserver:
+        condition: service_healthy
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
 
   redis:
     image: redis/redis-stack:latest
